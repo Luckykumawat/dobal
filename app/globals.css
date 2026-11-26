@@ -1,0 +1,38 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: #0f1115; color: #e8e8ea; }
+.container { max-width: 820px; margin: 0 auto; padding: 32px 16px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; }
+h1 { margin: 0; }
+.muted { color: #9aa0a6; margin: 4px 0; }
+.drop { border: 2px dashed #3a3f4b; border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: border-color .2s; }
+.drop:hover { border-color: #7c9cff; }
+.drop.disabled { opacity: .6; cursor: wait; }
+.drop input { display: none; }
+.error { color: #ff6b6b; margin: 0; }
+.chat { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+.msg { display: flex; flex-direction: column; }
+.msg.user { align-items: flex-end; }
+.bubble { padding: 10px 14px; border-radius: 12px; max-width: 85%; white-space: pre-wrap; line-height: 1.5; }
+.user .bubble { background: #3b5bdb; }
+.assistant .bubble { background: #1c1f26; border: 1px solid #2a2e37; }
+.sources { font-size: 12px; color: #9aa0a6; margin-top: 4px; }
+.ask { display: flex; gap: 8px; position: sticky; bottom: 16px; }
+.ask input { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #3a3f4b; background: #1c1f26; color: inherit; }
+.ask button { padding: 0 20px; border-radius: 10px; border: 0; background: #7c9cff; color: #0f1115; font-weight: 600; cursor: pointer; }
+.ask button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Live progress steps */
+.steps { list-style: none; margin: 4px 0 6px; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.step { display: flex; align-items: center; gap: 8px; color: #9aa0a6; animation: fadeIn .25s ease; }
+.step.done .icon { color: #51cf66; }
+.step.error, .step.error .icon { color: #ff6b6b; }
+.step.active { color: #e8e8ea; }
+.icon { width: 14px; display: inline-flex; justify-content: center; }
+.detail { color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.time { margin-left: auto; color: #6b7280; font-variant-numeric: tabular-nums; }
+.spinner { width: 11px; height: 11px; border: 2px solid #3a3f4b; border-top-color: #7c9cff; border-radius: 50%; animation: spin .8s linear infinite; }
+.shimmer { background: linear-gradient(90deg, #9aa0a6 0%, #ffffff 50%, #9aa0a6 100%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 1.6s linear infinite; }
+.activity-toggle { background: none; border: 0; color: #6b7280; font-size: 12px; cursor: pointer; padding: 0 0 4px; }
+.activity-toggle:hover { color: #9aa0a6; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
