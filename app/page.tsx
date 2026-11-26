@@ -1,7 +1,12 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { ProgressEvent, StepStatus } from '@/lib/progress';
+
+const STORAGE_KEY = 'ai-pdf-chat:v1';
+const MAX_MB = 4;
 
 type Step = { id: string; label: string; status: StepStatus; detail?: string; startedAt: number; endedAt?: number };
 type Msg = {
@@ -94,14 +99,45 @@ export default function Home() {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [restored, setRestored] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Restore the last PDF + chat after a page refresh.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      if (saved?.doc?.id) {
+        setDoc(saved.doc);
+        setMessages(Array.isArray(saved.messages) ? saved.messages : []);
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+    setRestored(true);
+  }, []);
+
+  useEffect(() => {
+    if (!restored) return;
+    if (!doc) return localStorage.removeItem(STORAGE_KEY);
+    // Don't persist half-finished answers or the step timelines.
+    const done = messages.filter((m) => !m.pending).map(({ role, content, sources, model }) => ({ role, content, sources, model }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ doc, messages: done.slice(-50) }));
+  }, [doc, messages, restored]);
+
   async function upload(file: File) {
     setError('');
+    if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
+      setError('Only PDF files are allowed');
+      return;
+    }
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setError(`PDF must be under ${MAX_MB} MB`);
+      return;
+    }
     setUploading(true);
     setUploadSteps([]);
     try {
@@ -149,6 +185,7 @@ export default function Home() {
       });
       await readProgress(res, (ev) => {
         if (ev.type === 'step') updateLast((m) => ({ ...m, steps: applyStep(m.steps ?? [], ev) }));
+        if (ev.type === 'delta') updateLast((m) => ({ ...m, content: m.content + ev.text }));
         if (ev.type === 'answer')
           updateLast((m) => ({ ...m, content: ev.text, sources: ev.sources, model: ev.model, pending: false }));
         if (ev.type === 'error') throw new Error(ev.message);
@@ -171,7 +208,7 @@ export default function Home() {
       <label className={`drop ${uploading ? 'disabled' : ''}`}>
         <input
           type="file"
-          accept="application/pdf"
+          accept="application/pdf,.pdf"
           disabled={uploading}
           onChange={(e) => {
             const f = e.target.files?.[0];
@@ -179,7 +216,7 @@ export default function Home() {
             if (f) upload(f);
           }}
         />
-        {uploading ? 'Processing PDF…' : doc ? `✅ ${doc.name} (${doc.pages} pages) · click to change` : 'Click to upload a PDF (max 10 MB)'}
+        {uploading ? 'Processing PDF…' : doc ? `✅ ${doc.name} (${doc.pages} pages) · click to change` : 'Click to upload a PDF (max 4 MB, 50 pages)'}
       </label>
       {uploadSteps.length > 0 && (uploading ? <StepList steps={uploadSteps} live /> : <Activity steps={uploadSteps} />)}
 
@@ -190,7 +227,12 @@ export default function Home() {
         {messages.map((m, i) => (
           <div key={i} className={`msg ${m.role}`}>
             {m.role === 'assistant' && m.steps && <Activity steps={m.steps} pending={m.pending} />}
-            {(m.role === 'user' || m.content) && <div className="bubble">{m.content}</div>}
+            {m.role === 'user' && <div className="bubble">{m.content}</div>}
+            {m.role === 'assistant' && m.content && (
+              <div className="bubble markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+              </div>
+            )}
             {m.sources && m.sources.length > 0 && (
               <div className="sources">
                 Sources: {[...new Set(m.sources.map((s) => s.page))].sort((a, b) => a - b).map((p) => `p.${p}`).join(', ')}

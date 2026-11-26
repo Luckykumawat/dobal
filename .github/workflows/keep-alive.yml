@@ -1,7 +1,7 @@
-name: Keep Supabase awake
+name: Keep Supabase awake + cleanup old PDFs
 on:
   schedule:
-    - cron: '0 6 */3 * *' # every 3 days
+    - cron: '0 6 * * *' # daily
   workflow_dispatch:
 jobs:
   ping:

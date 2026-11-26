@@ -41,15 +41,55 @@ export function supabase() {
   });
 }
 
-export async function embed(texts: string[], taskType: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY') {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Retries `fn` on 429/503-style errors with exponential backoff (1s, 2s, 4s, 8s...). */
+export async function withRetry<T>(fn: () => Promise<T>, onRetry?: (attempt: number, waitMs: number) => void, tries = 5) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (attempt >= tries || !isRetryable(e)) throw e;
+      const waitMs = 1000 * 2 ** (attempt - 1) + Math.floor(Math.random() * 300);
+      onRetry?.(attempt, waitMs);
+      await sleep(waitMs);
+    }
+  }
+}
+
+// ---- Simple in-memory rate limiter (per server instance; good enough for a demo app) ----
+const hits = new Map<string, number[]>();
+/** Returns seconds to wait if `key` exceeded `limit` requests in `windowMs`, else 0. */
+export function rateLimit(key: string, limit: number, windowMs: number) {
+  const now = Date.now();
+  const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
+  if (recent.length >= limit) return Math.ceil((recent[0] + windowMs - now) / 1000);
+  recent.push(now);
+  hits.set(key, recent);
+  if (hits.size > 5000) hits.clear(); // avoid unbounded memory
+  return 0;
+}
+export function clientIp(req: Request) {
+  return req.headers.get('x-forwarded-for')?.split(',')[0].trim() || req.headers.get('x-real-ip') || 'local';
+}
+
+export async function embed(
+  texts: string[],
+  taskType: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY',
+  onRetry?: (attempt: number, waitMs: number) => void,
+) {
   const out: number[][] = [];
   // Batch to stay within API limits
   for (let i = 0; i < texts.length; i += 50) {
-    const res = await gemini().models.embedContent({
-      model: EMBED_MODEL,
-      contents: texts.slice(i, i + 50),
-      config: { taskType, outputDimensionality: EMBED_DIM },
-    });
+    const res = await withRetry(
+      () =>
+        gemini().models.embedContent({
+          model: EMBED_MODEL,
+          contents: texts.slice(i, i + 50),
+          config: { taskType, outputDimensionality: EMBED_DIM },
+        }),
+      onRetry,
+    );
     for (const e of res.embeddings ?? []) out.push(e.values ?? []);
   }
   return out;

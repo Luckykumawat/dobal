@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { CHAT_MODELS, embed, gemini, isRetryable, supabase } from '@/lib/server';
+import { CHAT_MODELS, clientIp, embed, gemini, isRetryable, rateLimit, supabase } from '@/lib/server';
 import { progressResponse } from '@/lib/progress';
 
 export const runtime = 'nodejs';
@@ -9,6 +9,7 @@ type Msg = { role: 'user' | 'assistant'; content: string };
 type Match = { id: number; page: number; content: string; similarity: number };
 
 const TIMEOUT_MS = 15_000;
+const QUESTIONS_PER_10_MIN = 30;
 
 export async function POST(req: Request) {
   const { documentId, question, history = [] } = (await req.json().catch(() => ({}))) as {
@@ -19,11 +20,23 @@ export async function POST(req: Request) {
   if (!documentId || !question?.trim()) {
     return NextResponse.json({ error: 'documentId and question are required' }, { status: 400 });
   }
+  if (question.length > 2000) {
+    return NextResponse.json({ error: 'Question is too long (max 2000 characters)' }, { status: 400 });
+  }
+  const wait = rateLimit(`chat:${clientIp(req)}`, QUESTIONS_PER_10_MIN, 10 * 60 * 1000);
+  if (wait) {
+    return NextResponse.json(
+      { error: `Too many questions. Please wait ${wait}s and try again.` },
+      { status: 429 },
+    );
+  }
 
   return progressResponse(async ({ emit, step }) => {
     // 1. Understand the question
     step('understand', 'Understanding your question');
-    const [queryVec] = await embed([question], 'RETRIEVAL_QUERY');
+    const [queryVec] = await embed([question], 'RETRIEVAL_QUERY', (attempt) =>
+      step('understand', 'Understanding your question', 'active', `busy, retry ${attempt}`),
+    );
     step('understand', 'Understood your question', 'done');
 
     // 2. Search the PDF
@@ -65,17 +78,28 @@ QUESTION: ${question}`;
       for (let attempt = 0; attempt < 2; attempt++) {
         step('think', 'Thinking', 'active', attempt ? `${model} · retry ${attempt}` : model);
         const controller = new AbortController();
+        // Timeout only applies until the first token arrives.
         const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
         try {
-          const res = await gemini().models.generateContent({
+          const stream = await gemini().models.generateContentStream({
             model,
             contents: prompt,
             config: { abortSignal: controller.signal },
           });
-          answer = res.text ?? '';
+          for await (const chunk of stream) {
+            const text = chunk.text ?? '';
+            if (!text) continue;
+            if (!answer) {
+              clearTimeout(timer);
+              step('think', 'Writing answer', 'active', model);
+            }
+            answer += text;
+            emit({ type: 'delta', text });
+          }
           usedModel = model;
           break outer;
         } catch (e) {
+          if (answer) throw e; // already streamed part of the answer; can't switch models now
           const timedOut = controller.signal.aborted;
           lastErr = timedOut ? new Error(`timeout after ${TIMEOUT_MS / 1000}s`) : e;
           console.warn(`Model ${model} failed (attempt ${attempt + 1}):`, String((lastErr as Error).message).slice(0, 120));

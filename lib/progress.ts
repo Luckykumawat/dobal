@@ -2,6 +2,7 @@
 export type StepStatus = 'active' | 'done' | 'error';
 export type ProgressEvent =
   | { type: 'step'; id: string; label: string; status: StepStatus; detail?: string }
+  | { type: 'delta'; text: string }
   | { type: 'answer'; text: string; sources: { page: number; similarity: number }[]; model: string }
   | { type: 'document'; document: { id: string; name: string; pages: number }; chunks: number }
   | { type: 'error'; message: string };
