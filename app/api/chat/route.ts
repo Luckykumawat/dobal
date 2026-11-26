@@ -62,6 +62,9 @@ export async function POST(req: Request) {
     const prompt = `You answer questions about a PDF using ONLY the context below.
 If the answer is not in the context, say you could not find it in the document.
 Cite pages like (p. 3). Reply in the same language as the question.
+Write in simple, plain language with short paragraphs; use bullet lists and **bold** only where they help.
+If the user asks for something meant to be copied (an email, message, letter, template, quote, or code),
+put ONLY that copyable part inside a fenced code block (use \`\`\`text for plain text, or the code language).
 
 CONTEXT:
 ${context || '(no relevant text found)'}
