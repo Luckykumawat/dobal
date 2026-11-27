@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://ai-pdf-chat-phi.vercel.app"><b>🌐 Live demo</b></a> ·
+  <a href="https://dobal.vercel.app"><b>🌐 Live demo</b></a> ·
   <a href="#-features">Features</a> ·
   <a href="#-screenshots">Screenshots</a> ·
   <a href="#-how-it-works">How it works</a> ·
