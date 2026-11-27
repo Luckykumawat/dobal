@@ -40,6 +40,9 @@ type Note = {
   convId: string;
   msgId: string;
   convTitle: string;
+  status?: 'writing' | 'error'; // undefined = ready
+  error?: string;
+  context?: string; // surrounding answer, kept so a failed note can be retried
 };
 type Selection = { text: string; convId: string; msgId: string; x: number; y: number };
 type NoteDraft = {
@@ -187,7 +190,7 @@ export default function Home() {
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const noteAbort = useRef<AbortController | null>(null);
+  const noteAborts = useRef(new Map<string, AbortController>());
   const chatAbort = useRef<AbortController | null>(null);
   const [editingMsg, setEditingMsg] = useState<{ id: string; text: string } | null>(null);
 
@@ -214,7 +217,12 @@ export default function Home() {
         setActiveId(saved.activeId ?? null);
       }
       const savedNotes = JSON.parse(localStorage.getItem(NOTES_KEY) || '[]');
-      if (Array.isArray(savedNotes)) setNotes(savedNotes);
+      if (Array.isArray(savedNotes))
+        setNotes(
+          (savedNotes as Note[]).map((n) =>
+            n.status === 'writing' ? { ...n, status: 'error', error: 'Interrupted. Please retry.' } : n,
+          ),
+        );
     } catch {
       localStorage.removeItem(STORAGE_KEY);
     }
@@ -511,50 +519,56 @@ export default function Home() {
     setSelection(null);
   }
 
-  const closeDraft = useCallback(() => {
-    noteAbort.current?.abort();
-    setDraft(null);
-  }, []);
+  const closeDraft = useCallback(() => setDraft(null), []);
 
-  async function writeNote(d: NoteDraft) {
-    noteAbort.current?.abort();
+  /** Saves the note immediately and writes the explanation in the background. */
+  function writeNote(d: NoteDraft) {
+    const conv = convs.find((c) => c.id === d.convId);
+    const note: Note = {
+      id: d.id,
+      text: d.text,
+      question: d.question.trim(),
+      explanation: '',
+      createdAt: Date.now(),
+      convId: d.convId,
+      msgId: d.msgId,
+      convTitle: conv?.title ?? 'Chat',
+      status: 'writing',
+      context: d.context.slice(0, 4000),
+    };
+    setNotes((all) => [note, ...all]);
+    setDraft(null);
+    setToast({ text: 'Writing your note in the background…' });
+    generateNote(note);
+  }
+
+  async function generateNote(note: Note) {
+    noteAborts.current.get(note.id)?.abort();
     const abort = new AbortController();
-    noteAbort.current = abort;
-    setDraft({ ...d, status: 'writing', explanation: '', error: undefined });
-    const same = (fn: (cur: NoteDraft) => NoteDraft) => setDraft((cur) => (cur && cur.id === d.id ? fn(cur) : cur));
-    let full = '';
+    noteAborts.current.set(note.id, abort);
+    const patch = (fn: (n: Note) => Note) => setNotes((all) => all.map((n) => (n.id === note.id ? fn(n) : n)));
+    patch((n) => ({ ...n, status: 'writing', error: undefined, explanation: '' }));
     try {
       const res = await fetch('/api/note', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: d.text, question: d.question, context: d.context }),
+        body: JSON.stringify({ text: note.text, question: note.question, context: note.context ?? '' }),
         signal: abort.signal,
       });
       await readProgress(res, (ev) => {
-        if (ev.type === 'delta') {
-          full += ev.text;
-          same((cur) => ({ ...cur, explanation: cur.explanation + ev.text }));
-        }
-        if (ev.type === 'answer') full = ev.text;
+        if (ev.type === 'delta') patch((n) => ({ ...n, explanation: n.explanation + ev.text }));
+        if (ev.type === 'answer') patch((n) => ({ ...n, explanation: ev.text }));
         if (ev.type === 'error') throw new Error(ev.message);
       });
-      const conv = convs.find((c) => c.id === d.convId);
-      const note: Note = {
-        id: d.id,
-        text: d.text,
-        question: d.question.trim(),
-        explanation: full,
-        createdAt: Date.now(),
-        convId: d.convId,
-        msgId: d.msgId,
-        convTitle: conv?.title ?? 'Chat',
-      };
-      setNotes((all) => [note, ...all]);
-      setDraft(null);
-      setToast({ text: 'Added to Notes', noteId: note.id });
+      patch((n) => ({ ...n, status: undefined, context: undefined }));
+      setToast({ text: 'Note added', noteId: note.id });
     } catch (e) {
       if (abort.signal.aborted) return;
-      same((cur) => ({ ...cur, status: 'error', error: e instanceof Error ? e.message : 'Could not create note' }));
+      const message = e instanceof Error ? e.message : 'Could not create note';
+      patch((n) => ({ ...n, status: 'error', error: message }));
+      setToast({ text: 'Note failed. Open Notes to retry', noteId: note.id });
+    } finally {
+      if (noteAborts.current.get(note.id) === abort) noteAborts.current.delete(note.id);
     }
   }
 
@@ -642,7 +656,11 @@ export default function Home() {
         </button>
         <button type="button" className={`side-item ${view === 'notes' ? 'active' : ''}`} onClick={() => openNotes()}>
           <NoteIcon /> Notes
-          {notes.length > 0 && <span className="badge">{notes.length}</span>}
+          {notes.some((n) => n.status === 'writing') ? (
+            <span className="badge"><span className="spinner tiny" /></span>
+          ) : (
+            notes.length > 0 && <span className="badge">{notes.length}</span>
+          )}
         </button>
         <div className="side-label">Recents</div>
         <nav className="side-list">
@@ -686,7 +704,11 @@ export default function Home() {
             onSave={(id, patch) =>
               setNotes((all) => all.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: Date.now() } : n)))
             }
-            onDelete={(id) => setNotes((all) => all.filter((n) => n.id !== id))}
+            onDelete={(id) => {
+              noteAborts.current.get(id)?.abort();
+              setNotes((all) => all.filter((n) => n.id !== id));
+            }}
+            onRetry={(n) => generateNote(n)}
           />
         ) : (
           <>
@@ -862,54 +884,34 @@ function NoteModal({
         </div>
         <blockquote className="note-quote">{draft.text}</blockquote>
 
-        {draft.status === 'ask' ? (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              onSubmit(draft);
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit(draft);
+          }}
+        >
+          <label className="modal-label" htmlFor="note-q">What do you want to know about this?</label>
+          <textarea
+            id="note-q"
+            autoFocus
+            rows={3}
+            className="modal-input"
+            placeholder="e.g. Explain with a simple example (optional)"
+            value={draft.question}
+            onChange={(e) => setDraft((d) => (d ? { ...d, question: e.target.value } : d))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
             }}
-          >
-            <label className="modal-label" htmlFor="note-q">What do you want to know about this?</label>
-            <textarea
-              id="note-q"
-              autoFocus
-              rows={3}
-              className="modal-input"
-              placeholder="e.g. Explain with a simple example (optional)"
-              value={draft.question}
-              onChange={(e) => setDraft((d) => (d ? { ...d, question: e.target.value } : d))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  e.currentTarget.form?.requestSubmit();
-                }
-              }}
-            />
-            <div className="modal-actions">
-              <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-              <button type="submit" className="btn primary">Add note</button>
-            </div>
-          </form>
-        ) : (
-          <div className="note-writing">
-            {draft.question && <p className="note-asked">You asked: {draft.question}</p>}
-            {draft.status === 'writing' && !draft.explanation && <div className="thinking shimmer">Writing your note…</div>}
-            {draft.explanation && (
-              <div className="markdown note-body">
-                <Markdown>{draft.explanation}</Markdown>
-              </div>
-            )}
-            {draft.status === 'error' && (
-              <>
-                <p className="error">{draft.error}</p>
-                <div className="modal-actions">
-                  <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-                  <button type="button" className="btn primary" onClick={() => onSubmit(draft)}>Try again</button>
-                </div>
-              </>
-            )}
+          />
+          <p className="modal-hint">Dobal writes the note in the background, so you can keep chatting.</p>
+          <div className="modal-actions">
+            <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn primary">Add note</button>
           </div>
-        )}
+        </form>
       </div>
     </div>
   );
@@ -922,12 +924,14 @@ function NotesView({
   onGoToSource,
   onSave,
   onDelete,
+  onRetry,
 }: {
   notes: Note[];
   convExists: (id: string) => boolean;
   onGoToSource: (n: Note) => void;
   onSave: (id: string, patch: Partial<Note>) => void;
   onDelete: (id: string) => void;
+  onRetry: (n: Note) => void;
 }) {
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<{ id: string; text: string; question: string; explanation: string } | null>(null);
@@ -995,16 +999,26 @@ function NotesView({
                 <>
                   <blockquote className="note-quote">{n.text}</blockquote>
                   {n.question && <p className="note-asked">You asked: {n.question}</p>}
-                  <div className="markdown note-body">
-                    <Markdown>{n.explanation}</Markdown>
-                  </div>
+                  {n.status === 'writing' && !n.explanation && <div className="thinking shimmer note-body">Writing your note…</div>}
+                  {n.explanation && (
+                    <div className="markdown note-body">
+                      <Markdown>{n.explanation}</Markdown>
+                    </div>
+                  )}
+                  {n.status === 'error' && <p className="error note-body">⚠️ {n.error}</p>}
                   <div className="note-actions">
+                    {n.status === 'error' && (
+                      <button type="button" className="chip" onClick={() => onRetry(n)}>
+                        <RefreshIcon /> Retry
+                      </button>
+                    )}
                     <button type="button" className="chip" disabled={!convExists(n.convId)} onClick={() => onGoToSource(n)}>
                       <LinkIcon /> {convExists(n.convId) ? 'Go to source' : 'Chat deleted'}
                     </button>
                     <button
                       type="button"
                       className="chip"
+                      disabled={n.status === 'writing'}
                       onClick={() => setEditing({ id: n.id, text: n.text, question: n.question, explanation: n.explanation })}
                     >
                       <EditIcon /> Edit
