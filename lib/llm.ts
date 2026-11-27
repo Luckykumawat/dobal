@@ -58,6 +58,7 @@ export async function streamWithFallback(prompt: string, { onStatus, onDelta }: 
 }
 
 export const STYLE_RULES = `Reply in the same language the user writes in (Hindi, Hinglish, English, etc.).
+Do not greet or introduce yourself (no "Hello! I am Dobal") unless the user greets you or asks who you are; start directly with the answer.
 Write in simple, plain language with short paragraphs; use bullet lists, headings and **bold** only where they help.
 If the user asks for something meant to be copied (an email, message, letter, template, quote, or code),
 put ONLY that copyable part inside a fenced code block (use \`\`\`text for plain text, or the code language).`;

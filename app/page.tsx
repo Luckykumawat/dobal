@@ -359,7 +359,7 @@ export default function Home() {
       const res = await fetch('/api/upload', { method: 'POST', body: form, signal: abort.signal });
       await readProgress(res, (e) => {
         if (e.type === 'step' && e.status === 'active') set({ label: `${e.label}…` });
-        if (e.type === 'document') set({ status: 'ready', label: `PDF · ${e.document.pages} pages`, doc: e.document });
+        if (e.type === 'document') set({ status: 'ready', label: `PDF · ${e.document.pages} page${e.document.pages === 1 ? '' : 's'}`, doc: e.document });
         if (e.type === 'error') throw new Error(e.message);
       });
     } catch (e) {
