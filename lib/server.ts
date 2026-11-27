@@ -57,10 +57,14 @@ export async function withRetry<T>(fn: () => Promise<T>, onRetry?: (attempt: num
   }
 }
 
-// ---- Simple in-memory rate limiter (per server instance; good enough for a demo app) ----
+// ---- Rate limiter ----
+// Uses Upstash Redis when configured (shared across all Vercel instances),
+// otherwise falls back to an in-memory limiter (per server instance; fine for local dev).
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 const hits = new Map<string, number[]>();
-/** Returns seconds to wait if `key` exceeded `limit` requests in `windowMs`, else 0. */
-export function rateLimit(key: string, limit: number, windowMs: number) {
+
+function memoryLimit(key: string, limit: number, windowMs: number) {
   const now = Date.now();
   const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
   if (recent.length >= limit) return Math.ceil((recent[0] + windowMs - now) / 1000);
@@ -68,6 +72,32 @@ export function rateLimit(key: string, limit: number, windowMs: number) {
   hits.set(key, recent);
   if (hits.size > 5000) hits.clear(); // avoid unbounded memory
   return 0;
+}
+
+/** Returns seconds to wait if `key` exceeded `limit` requests in `windowMs`, else 0. */
+export async function rateLimit(key: string, limit: number, windowMs: number): Promise<number> {
+  if (REDIS_URL && REDIS_TOKEN) {
+    try {
+      const bucket = Math.floor(Date.now() / windowMs);
+      const redisKey = `dobal:rl:${key}:${bucket}`;
+      const res = await fetch(`${REDIS_URL}/pipeline`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([
+          ['INCR', redisKey],
+          ['PEXPIRE', redisKey, String(windowMs)],
+        ]),
+        cache: 'no-store',
+      });
+      if (!res.ok) throw new Error(`Upstash ${res.status}`);
+      const out = (await res.json()) as { result?: number }[];
+      const count = Number(out[0]?.result ?? 0);
+      return count > limit ? Math.ceil(((bucket + 1) * windowMs - Date.now()) / 1000) : 0;
+    } catch (e) {
+      console.warn('Rate limit: Redis unavailable, using memory:', (e as Error).message);
+    }
+  }
+  return memoryLimit(key, limit, windowMs);
 }
 export function clientIp(req: Request) {
   return req.headers.get('x-forwarded-for')?.split(',')[0].trim() || req.headers.get('x-real-ip') || 'local';

@@ -12,7 +12,7 @@ const MAX_PAGES = 50;
 const UPLOADS_PER_HOUR = 5;
 
 export async function POST(req: Request) {
-  const wait = rateLimit(`upload:${clientIp(req)}`, UPLOADS_PER_HOUR, 60 * 60 * 1000);
+  const wait = await rateLimit(`upload:${clientIp(req)}`, UPLOADS_PER_HOUR, 60 * 60 * 1000);
   if (wait) {
     return NextResponse.json(
       { error: `Upload limit reached (${UPLOADS_PER_HOUR}/hour). Try again in ${Math.ceil(wait / 60)} min.` },

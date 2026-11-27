@@ -5,7 +5,7 @@ export type ProgressEvent =
   | { type: 'delta'; text: string }
   | { type: 'answer'; text: string; sources: { page: number; similarity: number }[]; model: string }
   | { type: 'document'; document: { id: string; name: string; pages: number }; chunks: number }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string; code?: string };
 
 /** Creates an NDJSON streaming Response; `run` receives helpers to emit events. */
 export function progressResponse(
