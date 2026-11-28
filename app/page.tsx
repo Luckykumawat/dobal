@@ -4,6 +4,7 @@ import { FormEvent, ReactElement, ReactNode, useCallback, useEffect, useRef, use
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ProgressEvent, StepStatus } from '@/lib/progress';
+import { defineAppSwitcher } from '@/lib/dot/app-switcher';
 
 const STORAGE_KEY = 'ai-pdf-chat:v2';
 const NOTES_KEY = 'dobal:notes:v1';
@@ -198,6 +199,8 @@ export default function Home() {
   const messages = active?.messages ?? [];
   const empty = messages.length === 0;
   const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 768;
+
+  useEffect(() => defineAppSwitcher(), []);
 
   useEffect(() => {
     if (!jump) endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -694,6 +697,7 @@ export default function Home() {
             </button>
           )}
           <span className="topbar-title">{view === 'notes' ? 'Notes' : active?.title ?? 'Dobal'}</span>
+          <dot-app-switcher current="dobal" style={{ marginLeft: 'auto' }} />
         </header>
 
         {view === 'notes' ? (
