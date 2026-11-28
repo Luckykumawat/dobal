@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ProgressEvent, StepStatus } from '@/lib/progress';
 import { defineAppSwitcher } from '@dot-workspace/app-switcher';
+import { createDotIdClient, type DotSession } from '@dot-workspace/dot-id';
 
 const STORAGE_KEY = 'ai-pdf-chat:v2';
 const NOTES_KEY = 'dobal:notes:v1';
@@ -200,7 +201,17 @@ export default function Home() {
   const empty = messages.length === 0;
   const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 768;
 
-  useEffect(() => defineAppSwitcher(), []);
+  const [dotSession, setDotSession] = useState<DotSession | null>(null);
+  const dotIdRef = useRef<ReturnType<typeof createDotIdClient> | null>(null);
+  useEffect(() => {
+    defineAppSwitcher();
+    const client = createDotIdClient({ authOrigin: window.location.origin, appId: 'dobal' });
+    dotIdRef.current = client;
+    setDotSession(client.getSession());
+    const unsub = client.onAuthChange(setDotSession);
+    client.consumeCallback().then(setDotSession);
+    return unsub;
+  }, []);
 
   useEffect(() => {
     if (!jump) endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -697,7 +708,27 @@ export default function Home() {
             </button>
           )}
           <span className="topbar-title">{view === 'notes' ? 'Notes' : active?.title ?? 'Dobal'}</span>
-          <dot-app-switcher current="dobal" style={{ marginLeft: 'auto' }} />
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {dotSession ? (
+              <button
+                type="button"
+                title={`Signed in as ${dotSession.user.email} — click to sign out`}
+                onClick={() => dotIdRef.current?.signOut()}
+                style={{ fontSize: 12, padding: '6px 10px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.08)', color: 'inherit', cursor: 'pointer' }}
+              >
+                {dotSession.user.name} · Sign out
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => dotIdRef.current?.signIn({ returnTo: window.location.href })}
+                style={{ fontSize: 12, padding: '6px 12px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: 'inherit', cursor: 'pointer' }}
+              >
+                Sign in
+              </button>
+            )}
+            <dot-app-switcher apps={dotSession ? dotSession.apps.join(',') : ''} />
+          </div>
         </header>
 
         {view === 'notes' ? (
