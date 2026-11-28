@@ -8,10 +8,19 @@ const ALLOWED_ORIGINS = new Set([
   'https://golangi.web.app',
   'https://drivepool-3s9r.onrender.com',
   'https://labelshorting.netlify.app',
+  'https://dot-seller.vercel.app',
+  'https://listing-studio.gonesharma033.workers.dev',
   'https://dotworkspace.vercel.app',
 ]);
 
-const KNOWN_APPS = new Set(['dobal', 'drivepool', 'gather', 'label-sorter']);
+const KNOWN_APPS = new Set([
+  'dobal',
+  'drivepool',
+  'gather',
+  'label-sorter',
+  'dot-seller',
+  'listing-studio',
+]);
 
 function corsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('origin') || '';
@@ -51,7 +60,10 @@ export async function GET(req: Request) {
     .order('first_login_at', { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500, headers });
-  return NextResponse.json({ apps: (data ?? []).map((r) => r.app_id) }, { headers });
+  return NextResponse.json(
+    { apps: (data ?? []).map((r) => r.app_id), user: { id: user.id, email: user.email || '' } },
+    { headers },
+  );
 }
 
 export async function POST(req: Request) {
@@ -79,5 +91,8 @@ export async function POST(req: Request) {
     .order('first_login_at', { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500, headers });
-  return NextResponse.json({ apps: (data ?? []).map((r) => r.app_id) }, { headers });
+  return NextResponse.json(
+    { apps: (data ?? []).map((r) => r.app_id), user: { id: user.id, email: user.email || '' } },
+    { headers },
+  );
 }
