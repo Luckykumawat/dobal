@@ -1,5 +1,5 @@
 export const packageName: string;
-export const dotApps: { id: string; name: string; url: string; icon: string; color: string }[];
+export const dotApps: { id: string; name: string; url: string; icon: string }[];
 export function defineAppSwitcher(tag?: string): void;
 
 declare module 'react' {
