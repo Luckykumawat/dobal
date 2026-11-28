@@ -4,7 +4,7 @@ import { FormEvent, ReactElement, ReactNode, useCallback, useEffect, useRef, use
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ProgressEvent, StepStatus } from '@/lib/progress';
-import { defineAppSwitcher } from '@/lib/dot/app-switcher';
+import { defineAppSwitcher } from '@dot-workspace/app-switcher';
 
 const STORAGE_KEY = 'ai-pdf-chat:v2';
 const NOTES_KEY = 'dobal:notes:v1';
