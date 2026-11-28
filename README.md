@@ -225,4 +225,4 @@ Every push to `main` is deployed automatically by Vercel.
 
 <p align="center">Made by <a href="https://github.com/Luckykumawat">Lokesh Kumawat</a></p>
 
-The [production site](https://dobal.vercel.app) builds from `main` in [`dot-workspace/dobal`](https://github.com/dot-workspace/dobal) via Vercel.
+The [production site](https://dobal.vercel.app) builds from `main` in [`dot-workspace/dobal`](https://github.com/dot-workspace/dobal) via Vercel. Merging a pull request into `main` triggers a production deployment.
