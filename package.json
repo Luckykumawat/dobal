@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@dot-workspace/app-switcher": "0.3.0",
+    "@dot-workspace/app-switcher": "0.3.1",
     "@dot-workspace/dot-id": "0.1.0",
     "@google/genai": "^1.0.0",
     "@supabase/supabase-js": "^2.45.0",
