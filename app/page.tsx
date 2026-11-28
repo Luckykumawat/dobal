@@ -4,7 +4,6 @@ import { FormEvent, ReactElement, ReactNode, useCallback, useEffect, useRef, use
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ProgressEvent, StepStatus } from '@/lib/progress';
-import { defineAppSwitcher } from '@dot-workspace/app-switcher';
 import { createDotIdClient, type DotSession } from '@dot-workspace/dot-id';
 
 const STORAGE_KEY = 'ai-pdf-chat:v2';
@@ -204,7 +203,6 @@ export default function Home() {
   const [dotSession, setDotSession] = useState<DotSession | null>(null);
   const dotIdRef = useRef<ReturnType<typeof createDotIdClient> | null>(null);
   useEffect(() => {
-    defineAppSwitcher();
     const client = createDotIdClient({ authOrigin: window.location.origin, appId: 'dobal' });
     dotIdRef.current = client;
     setDotSession(client.getSession());
@@ -727,7 +725,6 @@ export default function Home() {
                 Sign in
               </button>
             )}
-            <dot-app-switcher apps={dotSession ? dotSession.apps.join(',') : ''} />
           </div>
         </header>
 
