@@ -12,6 +12,8 @@ const ALLOWED_ORIGINS = new Set([
   'https://golangi.web.app',
   'https://drivepool-3s9r.onrender.com',
   'https://labelshorting.netlify.app',
+  'https://dot-seller.vercel.app',
+  'https://listing-studio.gonesharma033.workers.dev',
   'https://dotworkspace.vercel.app',
 ]);
 
